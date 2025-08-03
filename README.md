@@ -10,7 +10,7 @@
 
 ## 📢 Descripción General
 
-**Lycan Visualizador** es una aplicación de escritorio diseñada para la gestión y manipulación de expedientes digitales en formato PDF dentro de un entorno organizacional.  
+**WolfSight PDF** es una aplicación de escritorio diseñada para la gestión y manipulación de expedientes digitales en formato PDF dentro de un entorno organizacional.  
 Su objetivo es **centralizar y simplificar el flujo de trabajo diario** de los operadores, permitiendo **visualizar, anexar y firmar documentos** de manera eficiente y segura.
 
 El sistema se conecta a un **servidor de archivos** para obtener los expedientes, los presenta en una **interfaz moderna tipo dashboard** y provee las herramientas necesarias para su modificación, garantizando **integridad y trazabilidad**.
