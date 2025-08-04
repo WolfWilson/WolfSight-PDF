@@ -1,6 +1,6 @@
 /* Hoja de estilos principal para WolfSight-PDF */
 
-/* ... (Estilos del menú y encabezados que ya tenías) ... */
+/* ui/main_styles.qss. */
 QWidget#menuFrame {
     background-color: #2c3e50;
     color: white;

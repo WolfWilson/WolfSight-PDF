@@ -1,3 +1,4 @@
+#ui/main_window.py
 import os
 import sys
 from PyQt6.QtWidgets import (
