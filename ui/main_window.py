@@ -1,36 +1,29 @@
-# WolfSight-PDF/ui/main_window.py
-
 import os
 import sys
 from PyQt6.QtWidgets import (
-    QApplication, QMainWindow, QWidget, QHBoxLayout, QVBoxLayout, QPushButton,
-    QFileDialog, QLabel, QSplitter, QDialog, QDialogButtonBox
+    QMainWindow, QWidget, QHBoxLayout, QVBoxLayout, QPushButton,
+    QFileDialog, QLabel, QSplitter
 )
 from PyQt6.QtGui import QIcon
 from PyQt6.QtCore import QUrl, Qt, QPropertyAnimation, QEasingCurve, QSize
-from PyQt6.QtWebEngineWidgets import QWebEngineView
+from PyQt6.QtWebEngineWidgets import QWebEngineView # <<<--- AÑADE ESTA LÍNEA
 
-# --- Lógica de PDF (simulada, para ser movida a modules/) ---
+# Importaciones de nuestro propio proyecto
+from ui.dialogs import CustomConfirmDialog
+from utils.resource_handler import resource_path
+
+# --- Lógica de PDF (simulada) ---
 def merge_pdfs(base_pdf_path, files_to_annex, output_path):
-    """Función simulada para unir PDFs."""
     print(f"--- ACCIÓN REALIZADA: Anexar archivos a {os.path.basename(base_pdf_path)} ---")
-    print(f"Archivos a anexar: {files_to_annex}")
-    print(f"Archivo de salida: {output_path}")
 
 def sign_pdf(pdf_path, signature_image_path, output_path, position):
-    """Función simulada para firmar un PDF."""
     print(f"--- ACCIÓN REALIZADA: Firmar el documento {os.path.basename(pdf_path)} ---")
 
-# --- Widget del Visor de PDF (para ser movido a ui/widgets/) ---
+# --- Widget del Visor de PDF ---
 class PdfViewer(QWebEngineView):
-    """Widget para mostrar archivos PDF."""
     def __init__(self, parent=None):
         super().__init__(parent)
-        
-        # --- CORRECCIÓN 1: Comprobar si 'settings' existe ---
-        # Guardamos la configuración en una variable para evitar llamarla múltiples veces
         settings = self.settings()
-        # Nos aseguramos de que no sea None antes de usarla
         if settings:
             settings.setAttribute(settings.WebAttribute.PluginsEnabled, True)
             settings.setAttribute(settings.WebAttribute.PdfViewerEnabled, True)
@@ -39,64 +32,24 @@ class PdfViewer(QWebEngineView):
         if file_path and os.path.exists(file_path):
             self.load(QUrl.fromLocalFile(os.path.abspath(file_path)))
         else:
-            self.setHtml("")  # Limpia la vista si no hay archivo
+            self.setHtml("")
 
-# --- Ventana de Confirmación (para ser movida a ui/dialogs.py) ---
-class CustomConfirmDialog(QDialog):
-    # (Este código no tenía errores y permanece igual)
-    def __init__(self, parent=None):
-        super().__init__(parent)
-        self.setWindowTitle("Confirmar Acción")
-        self.setMinimumWidth(380)
-        self.setStyleSheet("""
-            QDialog { background-color: #ffffff; }
-            QLabel { font-size: 14px; color: #333; }
-            QPushButton { 
-                background-color: #007bff; color: white; padding: 8px 20px; 
-                border-radius: 4px; font-size: 14px; border: none;
-            }
-            QPushButton:hover { background-color: #0056b3; }
-            QPushButton#cancelButton { background-color: #6c757d; }
-            QPushButton#cancelButton:hover { background-color: #5a6268; }
-        """)
-        
-        layout = QVBoxLayout(self)
-        layout.setContentsMargins(20, 20, 20, 20)
-        message = QLabel("¿Estás seguro de que deseas anexar este documento al expediente principal?")
-        message.setWordWrap(True)
-        message.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        
-        button_box = QDialogButtonBox(QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel)
-        ok_button = button_box.button(QDialogButtonBox.StandardButton.Ok)
-        cancel_button = button_box.button(QDialogButtonBox.StandardButton.Cancel)
-
-        if ok_button: ok_button.setText("Confirmar")
-        if cancel_button:
-            cancel_button.setText("Cancelar")
-            cancel_button.setObjectName("cancelButton")
-        
-        button_box.accepted.connect(self.accept)
-        button_box.rejected.connect(self.reject)
-        
-        layout.addWidget(message)
-        layout.addSpacing(15)
-        layout.addWidget(button_box)
-
-# --- Widget del Encabezado (para ser movido a ui/widgets/) ---
+# --- Widget del Encabezado ---
 class MainHeaderWidget(QWidget):
-    # (Este código no tenía errores y permanece igual)
     def __init__(self, parent=None):
         super().__init__(parent)
         self.setFixedHeight(50)
-        self.setStyleSheet("background-color: #e0e5e9; padding-left: 15px; border-bottom: 1px solid #c8cccf;")
+        self.setObjectName("mainHeader")
+
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 5, 0, 5)
         layout.setSpacing(0)
         
         self.actuacion_label = QLabel("Actuación Digital: (ninguna)")
-        self.actuacion_label.setStyleSheet("font-size: 16px; font-weight: bold; color: #2c3e50; border: none;")
+        self.actuacion_label.setObjectName("actuacionLabel")
+        
         self.titular_label = QLabel("Titular: (ninguno)")
-        self.titular_label.setStyleSheet("font-size: 12px; color: #2c3e50; border: none;")
+        self.titular_label.setObjectName("titularLabel")
         
         layout.addWidget(self.actuacion_label)
         layout.addWidget(self.titular_label)
@@ -105,14 +58,17 @@ class MainHeaderWidget(QWidget):
         self.actuacion_label.setText(f"Actuación Digital: {actuacion}")
         self.titular_label.setText(f"Titular: {titular}")
 
-# --- Ventana Principal del Dashboard ---
+# --- Ventana Principal ---
 class MainWindow(QMainWindow):
-    """La ventana principal de la aplicación WolfSight-PDF."""
     def __init__(self):
         super().__init__()
+        
+        # Atributo para optimizar el dibujado y eliminar el parpadeo inicial
+        self.setAttribute(Qt.WidgetAttribute.WA_OpaquePaintEvent)
+
         self.setWindowTitle("WolfSight-PDF | Gestión de Expedientes")
         self.setGeometry(100, 100, 1200, 800)
-        self.setWindowIcon(QIcon()) # Aquí podrías usar un ícono de 'assets/icons'
+        self.setWindowIcon(self.get_icon_for_button("AppIcon"))
         
         self.current_expediente_path = None
         self.current_annex_path = None
@@ -123,9 +79,8 @@ class MainWindow(QMainWindow):
         self._connect_signals()
     
     def _create_widgets(self):
-        """Crea todos los widgets necesarios para la ventana."""
         self.menu_frame = QWidget()
-        self.menu_frame.setStyleSheet("background-color: #2c3e50; color: white;")
+        self.menu_frame.setObjectName("menuFrame") 
         self.menu_frame.setFixedWidth(60)
         
         self.btn_toggle_menu = QPushButton("")
@@ -143,17 +98,13 @@ class MainWindow(QMainWindow):
             btn.setIcon(self.get_icon_for_button(text))
             btn.setIconSize(QSize(30, 30))
             btn.setToolTip(text)
-            btn.setStyleSheet("QPushButton { text-align: left; padding: 8px; border: none; } QPushButton:hover { background-color: #34495e; }")
 
         self.main_header = MainHeaderWidget()
         self.content_splitter = QSplitter(Qt.Orientation.Horizontal)
         
-        # --- CORRECCIÓN 2: Crear visores primero y pasarlos al contenedor ---
-        # 1. Creamos las instancias de los visores de PDF
         self.main_viewer = PdfViewer()
         self.annex_viewer = PdfViewer()
 
-        # 2. Pasamos el visor como argumento para que el contenedor lo ensamble
         main_viewer_container = self.create_viewer_container("Expediente Principal", viewer=self.main_viewer)
         self.annex_viewer_container = self.create_viewer_container("Documento a Anexar", viewer=self.annex_viewer, is_annex=True)
         
@@ -162,7 +113,6 @@ class MainWindow(QMainWindow):
         self.content_splitter.setSizes([self.width(), 0])
 
     def _create_layout(self):
-        # (Este código no tenía errores y permanece igual)
         main_layout = QHBoxLayout()
         main_layout.setContentsMargins(0, 0, 0, 0)
         main_layout.setSpacing(0)
@@ -188,7 +138,6 @@ class MainWindow(QMainWindow):
         self.setCentralWidget(central_widget)
 
     def _connect_signals(self):
-        # (Este código no tenía errores, solo se asegura que btn_confirm_annex exista)
         self.btn_toggle_menu.clicked.connect(self.toggle_menu)
         self.btn_open_expediente.clicked.connect(self.open_expediente)
         self.btn_load_annex.clicked.connect(self.load_document_to_annex)
@@ -197,22 +146,19 @@ class MainWindow(QMainWindow):
         if hasattr(self, 'btn_close_annex'):
             self.btn_close_annex.clicked.connect(self.close_annex_pane)
     
-    # --- CORRECCIÓN 3: Modificar la firma de la función ---
     def create_viewer_container(self, title, viewer: QWidget, is_annex=False):
-        """Crea un contenedor estándar para un visor de PDF."""
         container = QWidget()
-        layout = QVBoxLayout(container) # Asignamos el layout directamente
+        layout = QVBoxLayout(container)
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(0)
         
         header = QWidget()
+        header.setObjectName("viewerHeader") 
         header.setFixedHeight(35)
-        header.setStyleSheet("background-color: #f8f9fa; border-bottom: 1px solid #dee2e6; padding: 0 5px;")
         header_layout = QHBoxLayout(header)
         header_layout.setContentsMargins(5, 0, 5, 0)
 
         label = QLabel(title)
-        label.setStyleSheet("font-weight: bold; border: none; color: #333;")
         header_layout.addWidget(label)
 
         if is_annex:
@@ -221,21 +167,51 @@ class MainWindow(QMainWindow):
             self.btn_confirm_annex.setToolTip("Anexar al Expediente")
             self.btn_confirm_annex.setIconSize(QSize(20, 20))
             self.btn_confirm_annex.setEnabled(False)
-            self.btn_confirm_annex.setStyleSheet("border: none; padding: 5px;")
             header_layout.addWidget(self.btn_confirm_annex)
 
             self.btn_close_annex = QPushButton(self.get_icon_for_button("Cerrar"), "")
             self.btn_close_annex.setToolTip("Cerrar Panel de Anexo")
             self.btn_close_annex.setIconSize(QSize(20, 20))
-            self.btn_close_annex.setStyleSheet("border: none; padding: 5px;")
             header_layout.addWidget(self.btn_close_annex)
 
         layout.addWidget(header)
-        # Se añade el visor (u otro widget) al layout del contenedor
         layout.addWidget(viewer)
         return container
+    
+    def get_icon_for_button(self, text):
+        icon_map = {
+            "Menú": "menu.png",
+            "Abrir Expediente": "abrir-expediente.png",
+            "Cargar Documento": "cargar-documento.png",
+            "Firmar Documento": "firmar-documento.png",
+            "Anexar": "anexar.png",
+            "Cerrar": "cerrar.png",
+            "AppIcon": "app_icon.png"
+        }
+        
+        icon_filename = icon_map.get(text)
+        if icon_filename:
+            icon_path = resource_path(os.path.join("assets", "icons", icon_filename))
+            if os.path.exists(icon_path):
+                return QIcon(icon_path)
+        
+        if text == "AppIcon":
+            return QIcon()
 
-    # --- El resto de los métodos permanecen sin cambios ---
+        print(f"Advertencia: Ícono '{icon_filename}' no encontrado. Usando ícono por defecto.")
+        style = self.style()
+        if not style: return QIcon()
+        
+        default_icon_map = {
+            "Menú": style.StandardPixmap.SP_FileDialogListView,
+            "Abrir Expediente": style.StandardPixmap.SP_DirOpenIcon,
+            "Cargar Documento": style.StandardPixmap.SP_FileIcon,
+            "Firmar Documento": style.StandardPixmap.SP_DialogApplyButton,
+            "Anexar": style.StandardPixmap.SP_FileLinkIcon,
+            "Cerrar": style.StandardPixmap.SP_DialogCloseButton,
+        }
+        return style.standardIcon(default_icon_map.get(text, style.StandardPixmap.SP_DesktopIcon))
+
     def open_expediente(self):
         file_path, _ = QFileDialog.getOpenFileName(self, "Abrir Expediente PDF", "", "PDF Files (*.pdf)")
         if file_path:
@@ -257,7 +233,8 @@ class MainWindow(QMainWindow):
             self.current_annex_path = file_path
             self.annex_viewer.load_pdf(file_path)
             self.content_splitter.setSizes([self.width()//2, self.width()//2])
-            self.btn_confirm_annex.setEnabled(True)
+            if hasattr(self, 'btn_confirm_annex'):
+                self.btn_confirm_annex.setEnabled(True)
     
     def confirm_and_annex(self):
         if not self.current_expediente_path or not self.current_annex_path: return
@@ -276,20 +253,6 @@ class MainWindow(QMainWindow):
         self.current_annex_path = None
         if hasattr(self, 'btn_confirm_annex'):
             self.btn_confirm_annex.setEnabled(False)
-
-    def get_icon_for_button(self, text):
-        style = self.style()
-        if not style: return QIcon()
-        
-        icon_map = {
-            "Menú": style.StandardPixmap.SP_FileDialogListView,
-            "Abrir Expediente": style.StandardPixmap.SP_DirOpenIcon,
-            "Cargar Documento": style.StandardPixmap.SP_FileIcon,
-            "Firmar Documento": style.StandardPixmap.SP_DialogApplyButton,
-            "Anexar": style.StandardPixmap.SP_FileLinkIcon,
-            "Cerrar": style.StandardPixmap.SP_DialogCloseButton,
-        }
-        return style.standardIcon(icon_map.get(text, style.StandardPixmap.SP_DesktopIcon))
 
     def toggle_menu(self):
         collapsed_width = 60

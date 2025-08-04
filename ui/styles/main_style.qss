@@ -1,0 +1,85 @@
+/* Hoja de estilos principal para WolfSight-PDF */
+
+/* ... (Estilos del menú y encabezados que ya tenías) ... */
+QWidget#menuFrame {
+    background-color: #2c3e50;
+    color: white;
+}
+QWidget#menuFrame QPushButton { 
+    text-align: left; padding: 8px; border: none; color: white;
+} 
+QWidget#menuFrame QPushButton:hover { 
+    background-color: #34495e; 
+}
+QWidget#viewerHeader {
+    background-color: #2c3e50;
+    border-bottom: 1px solid #4a6572;
+}
+QWidget#viewerHeader QLabel {
+    color: #ffffff; font-weight: bold; border: none;
+}
+QWidget#viewerHeader QPushButton {
+    border: none; padding: 5px;
+}
+
+/* === ESTILOS DEL DIÁLOGO AÑADIDOS AQUÍ === */
+
+/* Estilo base para nuestro diálogo de confirmación */
+QDialog#confirmDialog { 
+    background-color: #ffffff; 
+}
+
+/* Estilo para las etiquetas dentro del diálogo */
+QDialog#confirmDialog QLabel { 
+    font-size: 14px; 
+    color: #333; 
+}
+
+/* Estilo para los botones dentro del diálogo */
+QDialog#confirmDialog QPushButton { 
+    background-color: #007bff; 
+    color: white; 
+    padding: 8px 20px; 
+    border-radius: 4px; 
+    font-size: 14px; 
+    border: none;
+}
+QDialog#confirmDialog QPushButton:hover { 
+    background-color: #0056b3; 
+}
+
+/* Estilo específico para el botón Cancelar del diálogo */
+QDialog#confirmDialog QPushButton#cancelButton { 
+    background-color: #6c757d; 
+}
+QDialog#confirmDialog QPushButton#cancelButton:hover { 
+    background-color: #5a6268; 
+}
+
+/* ... (todos tus estilos anteriores) ... */
+
+/* === ESTILOS DEL ENCABEZADO PRINCIPAL === */
+QWidget#mainHeader {
+    background-color: #e0e5e9;
+    padding-left: 15px;
+    border-bottom: 1px solid #c8cccf;
+}
+
+QWidget#mainHeader QLabel {
+    border: none; /* Asegura que las etiquetas no tengan bordes extra */
+}
+
+/* === ESTILOS PARA LAS ETIQUETAS DEL ENCABEZADO PRINCIPAL === */
+
+QLabel#actuacionLabel {
+    font-size: 16px;
+    font-weight: bold;
+    color: #2c3e50;
+    border: none;
+}
+
+QLabel#titularLabel {
+    font-size: 12px;
+    color: #2c3e50;
+    border: none;
+}

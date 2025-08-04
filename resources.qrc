@@ -1,0 +1,12 @@
+<!DOCTYPE RCC>
+<RCC version="1.0">
+<qresource prefix="/">
+    <file alias="styles/dialog_style.qss">ui/styles/dialog_style.qss</file>
+    <file alias="icons/menu.png">assets/icons/menu.png</file>
+    <file alias="icons/abrir-expediente.png">assets/icons/abrir-expediente.png</file>
+    <file alias="icons/cargar-documento.png">assets/icons/cargar-documento.png</file>
+    <file alias="icons/firmar-documento.png">assets/icons/firmar-documento.png</file>
+    <file alias="icons/anexar.png">assets/icons/anexar.png</file>
+    <file alias="icons/cerrar.png">assets/icons/cerrar.png</file>
+</qresource>
+</RCC>
