@@ -69,53 +69,36 @@ except ImportError:  # pragma: no cover
 # ║  Visor PDF                                                                ║
 # ╚═══════════════════════════════════════════════════════════════════════════╝
 class PdfViewer(QWebEngineView):
-    """Visor PDF basado en QWebEngineView (barra nativa sin imprimir/descargar)."""
+    """Visor PDF basado en QWebEngineView (sin hacks adicionales)."""
 
-    _profile: QWebEngineProfile | None = None  # perfil único
+    _profile: QWebEngineProfile | None = None  # perfil único compartido
 
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
 
+        # Perfil único para toda la aplicación
         if PdfViewer._profile is None:
             PdfViewer._profile = QWebEngineProfile.defaultProfile()
-
         profile = cast(QWebEngineProfile, PdfViewer._profile)
         self.setPage(QWebEnginePage(profile, self))
 
+        # Habilitar visor PDF nativo de Chromium
         settings = cast(QWebEngineSettings, self.settings())
         settings.setAttribute(QWebEngineSettings.WebAttribute.PluginsEnabled, True)
         settings.setAttribute(QWebEngineSettings.WebAttribute.PdfViewerEnabled, True)
 
-        self.loadFinished.connect(self._inject_hide_buttons_js)
-
+    # Forzar que cualquier ventana emergente se abra en este mismo visor
     def createWindow(  # type: ignore[override]
         self, _type: QWebEnginePage.WebWindowType
     ) -> "PdfViewer":
         return self
 
     def load_pdf(self, file_path: str | None) -> None:
+        """Carga un PDF o limpia el visor si la ruta es inválida."""
         if file_path and os.path.exists(file_path):
             self.load(QUrl.fromLocalFile(os.path.abspath(file_path)))
         else:
             self.setHtml("")
-
-    def _inject_hide_buttons_js(self, ok: bool) -> None:
-        if not ok:
-            return
-        js_code = """
-          (() => {
-            const hide = () => {
-              const sel = [
-                '[data-tooltip="Download"]','[data-tooltip="Print"]',
-                'cr-icon-button[command="print"]','cr-icon-button[command="download"]'
-              ];
-              sel.forEach(q => document.querySelectorAll(q).forEach(el => el.style.display='none'));
-            };
-            hide();
-          })();
-        """
-        page = cast(QWebEnginePage, self.page())
-        page.runJavaScript(js_code)
 
 # ╔═══════════════════════════════════════════════════════════════════════════╗
 # ║  Header informativo                                                       ║
@@ -125,16 +108,22 @@ class MainHeaderWidget(QWidget):
 
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
-        self.setFixedHeight(50)
+        self.setFixedHeight(60)
         self.setObjectName("mainHeader")
 
-        layout = QVBoxLayout(self)
-        layout.setContentsMargins(0, 5, 0, 5)
-        layout.setSpacing(0)
+        # Permitir que el QSS pinte el fondo
+        self.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
 
+        # Layout principal del header
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(20, 8, 8, 8)  # margen izq., top, der., bottom
+        layout.setSpacing(2)                    # separación entre labels
+
+        # Etiqueta principal (actuación)
         self.actuacion_label = QLabel("Actuación Digital: (ninguna)")
         self.actuacion_label.setObjectName("actuacionLabel")
 
+        # Etiqueta secundaria (titular)
         self.titular_label = QLabel("Titular: (ninguno)")
         self.titular_label.setObjectName("titularLabel")
 

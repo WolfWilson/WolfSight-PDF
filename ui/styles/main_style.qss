@@ -56,30 +56,26 @@ QDialog#confirmDialog QPushButton#cancelButton:hover {
     background-color: #5a6268; 
 }
 
-/* ... (todos tus estilos anteriores) ... */
-
-/* === ESTILOS DEL ENCABEZADO PRINCIPAL === */
+/* === ENCABEZADO PRINCIPAL PERSONALIZADO === */
 QWidget#mainHeader {
-    background-color: #e0e5e9;
-    padding-left: 15px;
-    border-bottom: 1px solid #c8cccf;
+    background-color: #1e2a38;
+    padding-left: 25px;
+    border-bottom: 1px solid #4a6572;
 }
 
 QWidget#mainHeader QLabel {
-    border: none; /* Asegura que las etiquetas no tengan bordes extra */
+    background-color: transparent;
 }
 
-/* === ESTILOS PARA LAS ETIQUETAS DEL ENCABEZADO PRINCIPAL === */
-
 QLabel#actuacionLabel {
-    font-size: 16px;
+    font-size: 18px;
     font-weight: bold;
-    color: #2c3e50;
-    border: none;
+    color: #ffffff;
 }
 
 QLabel#titularLabel {
-    font-size: 12px;
-    color: #2c3e50;
-    border: none;
+    font-size: 14px;
+    font-weight: bold;
+    color: #76a2b5;
 }
+
