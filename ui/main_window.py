@@ -1,24 +1,16 @@
 #!/usr/bin/env python
 # coding: utf-8
-# ──────────────────────────────────────────────────────────────────────────────
-#  ui/main_window.py
-#  WolfSight-PDF · Gestor de Expedientes Digitales
+# ui/main_window.py · WolfSight-PDF
 # ──────────────────────────────────────────────────────────────────────────────
 
 from __future__ import annotations
 
 import os
 import sys
-from typing import cast
+from typing import Callable, cast
 
-# ─── Qt ──────────────────────────────────────────────────────────────────────
-from PyQt6.QtCore import (
-    QEasingCurve,
-    QPropertyAnimation,
-    QSize,
-    Qt,
-    QUrl,
-)
+# Qt ──────────────────────────────────────────────────────────────────────────
+from PyQt6.QtCore import QEasingCurve, QPropertyAnimation, QSize, Qt, QUrl
 from PyQt6.QtGui import QIcon, QShowEvent
 from PyQt6.QtWidgets import (
     QFileDialog,
@@ -31,67 +23,99 @@ from PyQt6.QtWidgets import (
     QVBoxLayout,
     QWidget,
 )
-from PyQt6.QtWebEngineWidgets import QWebEngineView
 from PyQt6.QtWebEngineCore import (
     QWebEnginePage,
     QWebEngineProfile,
     QWebEngineSettings,
 )
+from PyQt6.QtWebEngineWidgets import QWebEngineView
 
-# ─── Internos ────────────────────────────────────────────────────────────────
+# Internos ────────────────────────────────────────────────────────────────────
 from ui.dialogs import CustomConfirmDialog
 from utils.resource_handler import resource_path
 
-# ╔═══════════════════════════════════════════════════════════════════════════╗
-# ║  Funciones “mock”                                                         ║
-# ╚═══════════════════════════════════════════════════════════════════════════╝
+# ─── Funciones “mock” de negocio (simulación) ───────────────────────────────
 def merge_pdfs(base_pdf_path: str, files_to_annex: list[str], output_path: str) -> None:
     print(f"— ACCIÓN — Anexar {len(files_to_annex)} archivo(s) a "
           f"{os.path.basename(base_pdf_path)} → {output_path}")
-
 
 def sign_pdf(
     pdf_path: str, signature_image_path: str, output_path: str, position: tuple[int, int]
 ) -> None:
     print(f"— ACCIÓN — Firmar {os.path.basename(pdf_path)} → {output_path}")
 
+# ─── Place-holders de descarga / impresión (se reemplazarán por módulos reales) ───
+# ─── Place-holders (tipado consistente con los reales) ───────────────────────
+try:
+    from utils.download import download_pdf
+except ImportError:  # pragma: no cover
+    def download_pdf(                      # ⬅ mismo nombre: source_path
+        source_path: str,
+        parent: QWidget | None = None
+    ) -> None:  # type: ignore[override]
+        print(f"[PLACEHOLDER] Descargar {source_path}")
+
+try:
+    from utils.print import print_pdf
+except ImportError:  # pragma: no cover
+    def print_pdf(                         # ⬅ mismo nombre: source_path
+        source_path: str,
+        parent: QWidget | None = None
+    ) -> None:  # type: ignore[override]
+        print(f"[PLACEHOLDER] Imprimir {source_path}")
+
 
 # ╔═══════════════════════════════════════════════════════════════════════════╗
 # ║  Visor PDF                                                                ║
 # ╚═══════════════════════════════════════════════════════════════════════════╝
 class PdfViewer(QWebEngineView):
-    """Visor PDF basado en QWebEngineView (sin pop-ups)."""
+    """Visor PDF basado en QWebEngineView (barra nativa sin imprimir/descargar)."""
 
-    _profile: QWebEngineProfile | None = None  # perfil único compartido
+    _profile: QWebEngineProfile | None = None  # perfil único
 
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
 
-        # Lazy-init del perfil -------------------------------------------------
         if PdfViewer._profile is None:
             PdfViewer._profile = QWebEngineProfile.defaultProfile()
 
         profile = cast(QWebEngineProfile, PdfViewer._profile)
         self.setPage(QWebEnginePage(profile, self))
 
-        # Ajustes del visor (cast elimina el Optional[None]) ------------------
         settings = cast(QWebEngineSettings, self.settings())
         settings.setAttribute(QWebEngineSettings.WebAttribute.PluginsEnabled, True)
         settings.setAttribute(QWebEngineSettings.WebAttribute.PdfViewerEnabled, True)
 
-    # ——forzar apertura en la misma ventana—----------------------------------
+        self.loadFinished.connect(self._inject_hide_buttons_js)
+
     def createWindow(  # type: ignore[override]
         self, _type: QWebEnginePage.WebWindowType
     ) -> "PdfViewer":
         return self
 
-    # ————————————————————————————————————————————
     def load_pdf(self, file_path: str | None) -> None:
         if file_path and os.path.exists(file_path):
             self.load(QUrl.fromLocalFile(os.path.abspath(file_path)))
         else:
-            self.setHtml("")  # limpia
+            self.setHtml("")
 
+    def _inject_hide_buttons_js(self, ok: bool) -> None:
+        if not ok:
+            return
+        js_code = """
+          (() => {
+            const hide = () => {
+              const sel = [
+                '[data-tooltip="Download"]','[data-tooltip="Print"]',
+                'cr-icon-button[command="print"]','cr-icon-button[command="download"]'
+              ];
+              sel.forEach(q => document.querySelectorAll(q).forEach(el => el.style.display='none'));
+            };
+            hide();
+          })();
+        """
+        page = cast(QWebEnginePage, self.page())
+        page.runJavaScript(js_code)
 
 # ╔═══════════════════════════════════════════════════════════════════════════╗
 # ║  Header informativo                                                       ║
@@ -121,7 +145,6 @@ class MainHeaderWidget(QWidget):
         self.actuacion_label.setText(f"Actuación Digital: {actuacion}")
         self.titular_label.setText(f"Titular: {titular}")
 
-
 # ╔═══════════════════════════════════════════════════════════════════════════╗
 # ║  Ventana principal                                                        ║
 # ╚═══════════════════════════════════════════════════════════════════════════╝
@@ -137,17 +160,14 @@ class MainWindow(QMainWindow):
         self.resize(1200, 800)
         self.setWindowIcon(self._get_icon("AppIcon"))
 
-        # Estado interno ------------------------------------------------------
         self.current_expediente_path: str | None = None
         self.current_annex_path: str | None = None
         self.menu_is_expanded: bool = False
 
-        # Interfaz ------------------------------------------------------------
         self._create_widgets()
         self._create_layout()
         self._connect_signals()
 
-        # Carga automática de prueba ------------------------------------------
         default_pdf = os.path.abspath(
             os.path.join(os.path.dirname(__file__), "..", "tests", "E-010529-2025.pdf")
         )
@@ -166,7 +186,6 @@ class MainWindow(QMainWindow):
 
     # ══════════════════════ WIDGETS ═══════════════════════════════════════════
     def _create_widgets(self) -> None:
-        # Menú lateral --------------------------------------------------------
         self.menu_frame = QWidget()
         self.menu_frame.setObjectName("menuFrame")
         self.menu_frame.setFixedWidth(60)
@@ -187,7 +206,6 @@ class MainWindow(QMainWindow):
             btn.setIconSize(QSize(30, 30))
             btn.setToolTip(text)
 
-        # Header y visores ----------------------------------------------------
         self.main_header = MainHeaderWidget()
 
         self.content_splitter = QSplitter(Qt.Orientation.Horizontal)
@@ -195,10 +213,15 @@ class MainWindow(QMainWindow):
         self.annex_viewer = PdfViewer()
 
         main_container = self._create_viewer_container(
-            "Expediente Principal", viewer=self.main_viewer
+            "Expediente Principal",
+            viewer=self.main_viewer,
+            path_getter=lambda: self.current_expediente_path,
         )
         self.annex_container = self._create_viewer_container(
-            "Documento a Anexar", viewer=self.annex_viewer, is_annex=True
+            "Documento a Anexar",
+            viewer=self.annex_viewer,
+            is_annex=True,
+            path_getter=lambda: self.current_annex_path,
         )
 
         self.content_splitter.addWidget(main_container)
@@ -243,7 +266,12 @@ class MainWindow(QMainWindow):
 
     # ═════════════ HELPERS DE CONSTRUCCIÓN ════════════════════════════════════
     def _create_viewer_container(
-        self, title: str, viewer: QWidget, *, is_annex: bool = False
+        self,
+        title: str,
+        viewer: QWidget,
+        *,
+        is_annex: bool = False,
+        path_getter: Callable[[], str | None],
     ) -> QWidget:
         container = QWidget()
         vbox = QVBoxLayout(container)
@@ -251,15 +279,31 @@ class MainWindow(QMainWindow):
         vbox.setSpacing(0)
 
         header = QWidget()
-        header.setObjectName("viewerHeader")  # ← ahora sí, sin kwargs
+        header.setObjectName("viewerHeader")
         header.setFixedHeight(35)
         hbox = QHBoxLayout(header)
         hbox.setContentsMargins(5, 0, 5, 0)
 
         hbox.addWidget(QLabel(title))
+        hbox.addStretch()
+
+        btn_download = QPushButton(self._get_icon("Descargar"), "")
+        btn_download.setIconSize(QSize(20, 20))
+        btn_download.setToolTip("Descargar PDF")
+        btn_download.clicked.connect(
+            lambda _=False, pg=path_getter: self._download_pdf(pg())
+        )
+        hbox.addWidget(btn_download)
+
+        btn_print = QPushButton(self._get_icon("Imprimir"), "")
+        btn_print.setIconSize(QSize(20, 20))
+        btn_print.setToolTip("Imprimir PDF")
+        btn_print.clicked.connect(
+            lambda _=False, pg=path_getter: self._print_pdf(pg())
+        )
+        hbox.addWidget(btn_print)
 
         if is_annex:
-            hbox.addStretch()
             self.btn_confirm_annex = QPushButton(self._get_icon("Anexar"), "")
             self.btn_confirm_annex.setIconSize(QSize(20, 20))
             self.btn_confirm_annex.setToolTip("Anexar al Expediente")
@@ -284,6 +328,8 @@ class MainWindow(QMainWindow):
             "Firmar Documento": "firmar-documento.png",
             "Anexar": "anexar.png",
             "Cerrar": "cerrar.png",
+            "Descargar": "descargar.png",
+            "Imprimir": "imprimir.png",
             "AppIcon": "app_icon.png",
         }
 
@@ -294,7 +340,7 @@ class MainWindow(QMainWindow):
                 return QIcon(path)
 
         if key == "AppIcon":
-            return QIcon()  # fallback silencioso
+            return QIcon()
 
         style = cast(QStyle, self.style())
         fallback = {
@@ -304,11 +350,22 @@ class MainWindow(QMainWindow):
             "Firmar Documento": style.StandardPixmap.SP_DialogApplyButton,
             "Anexar": style.StandardPixmap.SP_FileLinkIcon,
             "Cerrar": style.StandardPixmap.SP_DialogCloseButton,
+            "Descargar": style.StandardPixmap.SP_DialogSaveButton,
+            "Imprimir": style.StandardPixmap.SP_FileDialogDetailedView,
         }
         print(f"[WARN] Icono “{filename}” no encontrado → usando fallback.")
         return style.standardIcon(fallback.get(key, style.StandardPixmap.SP_DesktopIcon))
 
-    # ═════════════════════ SLOTS ═════════════════════════════════════════════
+    # —— Acciones de los botones propios ————————————————————————————————
+    def _download_pdf(self, path: str | None) -> None:
+        if path:
+            download_pdf(path, self)
+
+    def _print_pdf(self, path: str | None) -> None:
+        if path:
+            print_pdf(path, self)
+
+    # ═════════════════════ SLOTS EXISTENTES ══════════════════════════════════
     def _open_expediente(self) -> None:
         path, _ = QFileDialog.getOpenFileName(
             self, "Abrir Expediente PDF", "", "PDF Files (*.pdf)"
@@ -320,7 +377,6 @@ class MainWindow(QMainWindow):
         self.main_viewer.load_pdf(path)
         self.main_header.update_data("K-003607-2025", "CACERES GLADYS NILDA")
 
-        # Colapsa anexo si estuviera abierto
         if self.content_splitter.sizes()[1] != 0:
             self.content_splitter.setSizes([self.width(), 0])
 
@@ -378,8 +434,7 @@ class MainWindow(QMainWindow):
         self.animation.start()
         self.menu_is_expanded = not self.menu_is_expanded
 
-
-# ─── Ejecución directa para pruebas ─────────────────────────────────────────
+# ─── Ejecución directa ──────────────────────────────────────────────────────
 if __name__ == "__main__":
     from PyQt6.QtWidgets import QApplication
 
