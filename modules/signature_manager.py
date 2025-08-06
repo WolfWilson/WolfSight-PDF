@@ -1,7 +1,7 @@
 # coding: utf-8
 """
 Módulo para firmar documentos PDF con un QR de validación y una firma PAdES.
-Implementación final basada en el flujo de trabajo canónico y verificado de pyhanko.
+Versión 11 - ¡FUNCIONA!
 """
 
 from __future__ import annotations
@@ -11,7 +11,7 @@ import hashlib
 import json
 import logging
 import uuid
-from dataclasses import dataclass
+from dataclasses import dataclass, asdict  # <-- 1. IMPORTAR asdict
 from io import BytesIO
 from pathlib import Path
 from typing import Any, Final, Tuple
@@ -21,8 +21,7 @@ import qrcode.constants as qr_const
 from PyPDF2 import PdfReader, PdfWriter
 from pyhanko.pdf_utils.incremental_writer import IncrementalPdfFileWriter
 from pyhanko.sign import signers
-# LA IMPORTACIÓN CLAVE QUE FALTABA
-from pyhanko.sign.fields import SigFieldSpec, append_signature_field
+from pyhanko.sign.fields import SigFieldSpec
 from reportlab.lib.utils import ImageReader
 from reportlab.pdfgen import canvas
 
@@ -143,26 +142,20 @@ class SignatureManager:
         signature_meta = signers.PdfSignatureMetadata(
             reason=reason,
             location="Resistencia, Chaco, Argentina",
+            field_name='Signature1'
         )
-        
-        # --- EL FLUJO DE TRABAJO CORRECTO Y VERIFICADO ---
+        field_spec = SigFieldSpec(
+            sig_field_name='Signature1',
+            box=(0, 0, 0, 0)
+        )
         w = IncrementalPdfFileWriter(pdf_in_data)
-        
-        # 1. Añadir el campo de firma usando la FUNCIÓN INDEPENDIENTE.
-        append_signature_field(
-            w, sig_field_spec=SigFieldSpec(
-                sig_field_name='Signature1',
-                box=(0, 0, 0, 0)
-            )
-        )
-        
-        # 2. Firmar. La función usará el campo que acabamos de añadir.
         with pdf_out_path.open("wb") as outf:
             signers.sign_pdf(
                 w,
                 signature_meta=signature_meta,
                 signer=signer,
-                output=outf,
+                new_field_spec=field_spec,
+                output=outf
             )
 
     @staticmethod
@@ -181,7 +174,10 @@ class SignatureManager:
         except (json.JSONDecodeError, ValueError, FileNotFoundError) as exc:
             _LOG.warning("Archivo de validaciones corrupto o no encontrado, se reiniciará: %s", exc)
             data: list[dict[str, Any]] = []
-        data.append(rec.__dict__)
+        
+        # --- 2. USAR asdict(rec) EN LUGAR DE rec.__dict__ ---
+        data.append(asdict(rec))
+        
         self._store.write_text(
             json.dumps(data, indent=2, ensure_ascii=False),
             encoding="utf-8"
