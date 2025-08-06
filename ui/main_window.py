@@ -1,12 +1,11 @@
 #!/usr/bin/env python
 # coding: utf-8
 # ui/main_window.py · WolfSight-PDF
-# ─────────────────────────────────────────────────────────────────────────────
-
 from __future__ import annotations
 
 import os
 import sys
+from pathlib import Path
 from typing import Callable, cast
 
 from PyQt6.QtCore import QEasingCurve, QPropertyAnimation, QSize, Qt, QUrl
@@ -14,7 +13,9 @@ from PyQt6.QtGui import QIcon, QShowEvent
 from PyQt6.QtWidgets import (
     QFileDialog,
     QHBoxLayout,
+    QInputDialog,
     QLabel,
+    QLineEdit,
     QMainWindow,
     QPushButton,
     QSplitter,
@@ -25,11 +26,12 @@ from PyQt6.QtWidgets import (
 from PyQt6.QtWebEngineCore import QWebEnginePage, QWebEngineProfile, QWebEngineSettings
 from PyQt6.QtWebEngineWidgets import QWebEngineView
 
-from ui.dialogs import CustomConfirmDialog
+from modules.signature_manager import SignatureManager
+from ui.dialogs import CustomConfirmDialog, SignedResultDialog
 from ui.version import VersionDialog
 from utils.resource_handler import resource_path
 
-# ─────────────────────────────── Place-holders externos ──────────────────────
+# Place-holders externos
 try:
     from utils.download import download_pdf  # type: ignore
 except ImportError:  # pragma: no cover
@@ -49,8 +51,6 @@ def merge_pdfs(base_pdf_path: str, files_to_annex: list[str], output_path: str) 
 
 
 # ╔═══════════════════════════════════════════════════════════════════════════╗
-# ║  Visor PDF                                                                ║
-# ╚═══════════════════════════════════════════════════════════════════════════╝
 class PdfViewer(QWebEngineView):
     """Visor embebido basado en QWebEngineView."""
 
@@ -58,7 +58,6 @@ class PdfViewer(QWebEngineView):
 
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
-
         if PdfViewer._profile is None:
             PdfViewer._profile = QWebEngineProfile.defaultProfile()
         profile = cast(QWebEngineProfile, PdfViewer._profile)
@@ -68,7 +67,6 @@ class PdfViewer(QWebEngineView):
         settings.setAttribute(QWebEngineSettings.WebAttribute.PluginsEnabled, True)
         settings.setAttribute(QWebEngineSettings.WebAttribute.PdfViewerEnabled, True)
 
-    # Garantiza que los pop-ups se abran en la misma vista
     def createWindow(self, _type: QWebEnginePage.WebWindowType) -> "PdfViewer":  # type: ignore[override]
         return self
 
@@ -79,9 +77,6 @@ class PdfViewer(QWebEngineView):
             self.setHtml("")
 
 
-# ╔═══════════════════════════════════════════════════════════════════════════╗
-# ║  Header informativo                                                       ║
-# ╚═══════════════════════════════════════════════════════════════════════════╝
 class MainHeaderWidget(QWidget):
     """Barra superior con info del expediente."""
 
@@ -107,9 +102,9 @@ class MainHeaderWidget(QWidget):
     def update_data(self, actuacion: str, titular: str) -> None:
         self.actuacion_label.setText(f"Actuación Digital: {actuacion}")
         self.titular_label.setText(f"Titular: {titular}")
+
+
 # ╔═══════════════════════════════════════════════════════════════════════════╗
-# ║  Ventana principal                                                        ║
-# ╚═══════════════════════════════════════════════════════════════════════════╝
 class MainWindow(QMainWindow):
     """Shell principal."""
 
@@ -119,11 +114,16 @@ class MainWindow(QMainWindow):
         self.resize(1200, 800)
         self.setWindowIcon(self._get_icon("AppIcon"))
 
+        # Estado
         self.current_expediente_path: str | None = None
         self.current_annex_path: str | None = None
         self.menu_is_expanded: bool = False
         self._menu_animation: QPropertyAnimation | None = None
 
+        # Firma
+        self.signature_manager = SignatureManager()
+
+        # UI
         self._create_widgets()
         self._create_layout()
         self._connect_signals()
@@ -139,9 +139,8 @@ class MainWindow(QMainWindow):
         super().showEvent(event)
         self.setUpdatesEnabled(True)
 
-    # ══════════════════════ WIDGETS ═══════════════════════════════════════════
+    # ══════════════════════ widgets ══════════════════════════════════════════
     def _create_widgets(self) -> None:
-        # Menú lateral
         self.menu_frame = QWidget()
         self.menu_frame.setObjectName("menuFrame")
         self.menu_frame.setFixedWidth(60)
@@ -171,7 +170,7 @@ class MainWindow(QMainWindow):
         self.btn_version.setIconSize(QSize(40, 40))
         self.btn_version.setToolTip("Acerca de WolfSight-PDF")
 
-        # Zona central
+        # Visores
         self.main_header = MainHeaderWidget()
         self.content_splitter = QSplitter(Qt.Orientation.Horizontal)
         self.main_viewer = PdfViewer()
@@ -187,7 +186,7 @@ class MainWindow(QMainWindow):
         self.content_splitter.addWidget(annex_container)
         self.content_splitter.setSizes([self.width(), 0])
 
-    # ══════════════════════ LAYOUT ════════════════════════════════════════════
+    # ══════════════════════ layout ═══════════════════════════════════════════
     def _create_layout(self) -> None:
         menu_vbox = QVBoxLayout(self.menu_frame)
         menu_vbox.setAlignment(Qt.AlignmentFlag.AlignTop)
@@ -217,22 +216,22 @@ class MainWindow(QMainWindow):
 
         self.setCentralWidget(root)
 
-    # ═════════════════════ SEÑALES ════════════════════════════════════════════
+    # ═════════════════════ señales ═══════════════════════════════════════════
     def _connect_signals(self) -> None:
         self.btn_toggle.clicked.connect(self._toggle_menu)
         self.btn_open.clicked.connect(self._open_expediente)
         self.btn_load.clicked.connect(self._load_document_to_annex)
         self.btn_download.clicked.connect(lambda: self._download_pdf(self.current_expediente_path))
         self.btn_print.clicked.connect(lambda: self._print_pdf(self.current_expediente_path))
+        self.btn_sign.clicked.connect(self._sign_current_pdf)
         self.btn_version.clicked.connect(lambda: VersionDialog(self).exec())
 
-        # Botones del panel de anexo (se crean dinámicamente)
         if hasattr(self, "btn_confirm_annex"):
             self.btn_confirm_annex.clicked.connect(self._confirm_and_annex)
         if hasattr(self, "btn_close_annex"):
             self.btn_close_annex.clicked.connect(self._close_annex_pane)
 
-    # ═════════════ HELPERS DE CONSTRUCCIÓN ════════════════════════════════════
+    # ═════════════ viewer container ══════════════════════════════════════════
     def _create_viewer_container(
         self,
         title: str,
@@ -257,13 +256,13 @@ class MainWindow(QMainWindow):
 
         if is_annex:
             self.btn_confirm_annex = QPushButton(self._get_icon("Anexar"), "")
-            self.btn_confirm_annex.setIconSize(QSize(30, 30))   # ← tamaño del icono
+            self.btn_confirm_annex.setIconSize(QSize(30, 30))
             self.btn_confirm_annex.setToolTip("Anexar al Expediente")
             self.btn_confirm_annex.setEnabled(False)
             hbox.addWidget(self.btn_confirm_annex)
 
             self.btn_close_annex = QPushButton(self._get_icon("Cerrar"), "")
-            self.btn_close_annex.setIconSize(QSize(30, 30))     # ← tamaño del icono
+            self.btn_close_annex.setIconSize(QSize(30, 30))
             self.btn_close_annex.setToolTip("Cerrar Panel de Anexo")
             hbox.addWidget(self.btn_close_annex)
 
@@ -271,7 +270,7 @@ class MainWindow(QMainWindow):
         vbox.addWidget(viewer)
         return container
 
-    # ═════════════════════ UTILIDADES ════════════════════════════════════════
+    # ═════════════════════ utilidades ════════════════════════════════════════
     def _get_icon(self, key: str) -> QIcon:
         icon_map = {
             "Menú": "menu.png",
@@ -294,10 +293,9 @@ class MainWindow(QMainWindow):
         if key == "AppIcon":
             return QIcon()
 
-        style = cast(QStyle, self.style())
-        return style.standardIcon(QStyle.StandardPixmap.SP_MessageBoxInformation)
+        return cast(QStyle, self.style()).standardIcon(QStyle.StandardPixmap.SP_MessageBoxInformation)
 
-    # —— Acciones y slots ——————————————————————————————————————————————
+    # —— acciones básicas ——————————————————————————————————————————————
     def _download_pdf(self, path: str | None) -> None:
         if path:
             download_pdf(path, self)
@@ -330,8 +328,7 @@ class MainWindow(QMainWindow):
     def _confirm_and_annex(self) -> None:
         if not (self.current_expediente_path and self.current_annex_path):
             return
-        dialog = CustomConfirmDialog(self)
-        if dialog.exec():
+        if CustomConfirmDialog(self).exec():
             output = self.current_expediente_path.replace(".pdf", "-anexado.pdf")
             merge_pdfs(self.current_expediente_path, [self.current_annex_path], output)
             self._close_annex_pane()
@@ -345,6 +342,45 @@ class MainWindow(QMainWindow):
         if hasattr(self, "btn_confirm_annex"):
             self.btn_confirm_annex.setEnabled(False)
 
+    # ——— firma digital ——————————————————————————————————————————————
+    def _sign_current_pdf(self) -> None:
+        if not self.current_expediente_path:
+            print("► Primero abra un expediente para firmar.")
+            return
+
+        pfx_path, _ = QFileDialog.getOpenFileName(self, "Seleccionar certificado .pfx", "", "PFX (*.pfx)")
+        if not pfx_path:
+            return
+
+        pwd, ok = QInputDialog.getText(
+            self,
+            "Contraseña",
+            "Contraseña del certificado:",
+            QLineEdit.EchoMode.Password,
+        )
+        if not ok:
+            return
+
+        src = Path(cast(str, self.current_expediente_path))
+        dst = src.with_stem(src.stem + "-firmado")
+
+        try:
+            rec, qr_png = self.signature_manager.sign_pdf(
+                pdf_in=src,
+                pdf_out=dst,
+                pfx_path=pfx_path,
+                pfx_password=pwd,
+                user="demo_user",
+            )
+        except Exception as exc:  # noqa: BLE001
+            print(f"[ERROR] Firma fallida → {exc}")
+            return
+
+        self.current_expediente_path = str(dst)
+        self.main_viewer.load_pdf(str(dst))
+        SignedResultDialog(code=rec.code, qr_png=qr_png, parent=self).exec()
+
+    # ——— menú lateral ——————————————————————————————————————————————
     def _toggle_menu(self) -> None:
         collapsed, expanded = 60, 220
         self._menu_animation = QPropertyAnimation(self.menu_frame, b"minimumWidth", self)
@@ -375,7 +411,7 @@ class MainWindow(QMainWindow):
         self.menu_is_expanded = not self.menu_is_expanded
 
 
-# ─── Arranque directo ────────────────────────────────────────────────────────
+# ─── Arranque directo ——————————————————————————————————————————————
 if __name__ == "__main__":
     from PyQt6.QtWidgets import QApplication
 
