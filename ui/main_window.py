@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 # coding: utf-8
 # ui/main_window.py · WolfSight-PDF
-# ──────────────────────────────────────────────────────────────────────────────
+# ─────────────────────────────────────────────────────────────────────────────
 
 from __future__ import annotations
 
@@ -9,7 +9,6 @@ import os
 import sys
 from typing import Callable, cast
 
-# Qt ──────────────────────────────────────────────────────────────────────────
 from PyQt6.QtCore import QEasingCurve, QPropertyAnimation, QSize, Qt, QUrl
 from PyQt6.QtGui import QIcon, QShowEvent
 from PyQt6.QtWidgets import (
@@ -23,107 +22,81 @@ from PyQt6.QtWidgets import (
     QVBoxLayout,
     QWidget,
 )
-from PyQt6.QtWebEngineCore import (
-    QWebEnginePage,
-    QWebEngineProfile,
-    QWebEngineSettings,
-)
+from PyQt6.QtWebEngineCore import QWebEnginePage, QWebEngineProfile, QWebEngineSettings
 from PyQt6.QtWebEngineWidgets import QWebEngineView
 
-# Internos ────────────────────────────────────────────────────────────────────
 from ui.dialogs import CustomConfirmDialog
+from ui.version import VersionDialog
 from utils.resource_handler import resource_path
 
-# ─── Funciones “mock” de negocio (simulación) ───────────────────────────────
-def merge_pdfs(base_pdf_path: str, files_to_annex: list[str], output_path: str) -> None:
-    print(f"— ACCIÓN — Anexar {len(files_to_annex)} archivo(s) a "
-          f"{os.path.basename(base_pdf_path)} → {output_path}")
-
-def sign_pdf(
-    pdf_path: str, signature_image_path: str, output_path: str, position: tuple[int, int]
-) -> None:
-    print(f"— ACCIÓN — Firmar {os.path.basename(pdf_path)} → {output_path}")
-
-# ─── Place-holders de descarga / impresión (se reemplazarán por módulos reales) ───
-# ─── Place-holders (tipado consistente con los reales) ───────────────────────
+# ─────────────────────────────── Place-holders de lógica externa ─────────────
 try:
-    from utils.download import download_pdf
+    from utils.download import download_pdf  # type: ignore
 except ImportError:  # pragma: no cover
-    def download_pdf(                      # ⬅ mismo nombre: source_path
-        source_path: str,
-        parent: QWidget | None = None
-    ) -> None:  # type: ignore[override]
-        print(f"[PLACEHOLDER] Descargar {source_path}")
+    def download_pdf(path: str, parent: QWidget | None = None) -> None:  # type: ignore[override]
+        print(f"[PLACEHOLDER] Descargar {path}")
+
 
 try:
-    from utils.print import print_pdf
+    from utils.print import print_pdf  # type: ignore
 except ImportError:  # pragma: no cover
-    def print_pdf(                         # ⬅ mismo nombre: source_path
-        source_path: str,
-        parent: QWidget | None = None
-    ) -> None:  # type: ignore[override]
-        print(f"[PLACEHOLDER] Imprimir {source_path}")
+    def print_pdf(path: str, parent: QWidget | None = None) -> None:  # type: ignore[override]
+        print(f"[PLACEHOLDER] Imprimir {path}")
+
+
+def merge_pdfs(base_pdf_path: str, files_to_annex: list[str], output_path: str) -> None: ...
+def sign_pdf(pdf_path: str, signature_image_path: str, output_path: str, position: tuple[int, int]) -> None: ...
 
 
 # ╔═══════════════════════════════════════════════════════════════════════════╗
 # ║  Visor PDF                                                                ║
 # ╚═══════════════════════════════════════════════════════════════════════════╝
 class PdfViewer(QWebEngineView):
-    """Visor PDF basado en QWebEngineView (sin hacks adicionales)."""
+    """Visor PDF basado en QWebEngineView."""
 
-    _profile: QWebEngineProfile | None = None  # perfil único compartido
+    _profile: QWebEngineProfile | None = None
 
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
 
-        # Perfil único para toda la aplicación
         if PdfViewer._profile is None:
             PdfViewer._profile = QWebEngineProfile.defaultProfile()
         profile = cast(QWebEngineProfile, PdfViewer._profile)
         self.setPage(QWebEnginePage(profile, self))
 
-        # Habilitar visor PDF nativo de Chromium
         settings = cast(QWebEngineSettings, self.settings())
         settings.setAttribute(QWebEngineSettings.WebAttribute.PluginsEnabled, True)
         settings.setAttribute(QWebEngineSettings.WebAttribute.PdfViewerEnabled, True)
 
-    # Forzar que cualquier ventana emergente se abra en este mismo visor
-    def createWindow(  # type: ignore[override]
-        self, _type: QWebEnginePage.WebWindowType
-    ) -> "PdfViewer":
+    def createWindow(self, _type: QWebEnginePage.WebWindowType) -> "PdfViewer":  # type: ignore[override]
         return self
 
     def load_pdf(self, file_path: str | None) -> None:
-        """Carga un PDF o limpia el visor si la ruta es inválida."""
         if file_path and os.path.exists(file_path):
             self.load(QUrl.fromLocalFile(os.path.abspath(file_path)))
         else:
             self.setHtml("")
 
+
 # ╔═══════════════════════════════════════════════════════════════════════════╗
 # ║  Header informativo                                                       ║
 # ╚═══════════════════════════════════════════════════════════════════════════╝
 class MainHeaderWidget(QWidget):
-    """Header con datos del expediente."""
+    """Barra superior con datos del expediente."""
 
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
         self.setFixedHeight(60)
         self.setObjectName("mainHeader")
-
-        # Permitir que el QSS pinte el fondo
         self.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
 
-        # Layout principal del header
         layout = QVBoxLayout(self)
-        layout.setContentsMargins(20, 8, 8, 8)  # margen izq., top, der., bottom
-        layout.setSpacing(2)                    # separación entre labels
+        layout.setContentsMargins(20, 8, 8, 8)
+        layout.setSpacing(2)
 
-        # Etiqueta principal (actuación)
         self.actuacion_label = QLabel("Actuación Digital: (ninguna)")
         self.actuacion_label.setObjectName("actuacionLabel")
 
-        # Etiqueta secundaria (titular)
         self.titular_label = QLabel("Titular: (ninguno)")
         self.titular_label.setObjectName("titularLabel")
 
@@ -134,17 +107,15 @@ class MainHeaderWidget(QWidget):
         self.actuacion_label.setText(f"Actuación Digital: {actuacion}")
         self.titular_label.setText(f"Titular: {titular}")
 
+
 # ╔═══════════════════════════════════════════════════════════════════════════╗
 # ║  Ventana principal                                                        ║
 # ╚═══════════════════════════════════════════════════════════════════════════╝
 class MainWindow(QMainWindow):
-    """Shell principal."""
+    """Shell principal de la aplicación."""
 
     def __init__(self) -> None:
         super().__init__()
-        self.setVisible(False)
-        self.setUpdatesEnabled(False)
-
         self.setWindowTitle("WolfSight-PDF | Gestión de Expedientes")
         self.resize(1200, 800)
         self.setWindowIcon(self._get_icon("AppIcon"))
@@ -152,82 +123,89 @@ class MainWindow(QMainWindow):
         self.current_expediente_path: str | None = None
         self.current_annex_path: str | None = None
         self.menu_is_expanded: bool = False
+        self._menu_animation: QPropertyAnimation | None = None
 
         self._create_widgets()
         self._create_layout()
         self._connect_signals()
 
-        default_pdf = os.path.abspath(
-            os.path.join(os.path.dirname(__file__), "..", "tests", "E-010529-2025.pdf")
-        )
-        if os.path.exists(default_pdf):
-            self.current_expediente_path = default_pdf
-            self.main_viewer.load_pdf(default_pdf)
+        demo = resource_path("tests/E-010529-2025.pdf")
+        if os.path.exists(demo):
+            self.current_expediente_path = demo
+            self.main_viewer.load_pdf(demo)
             self.main_header.update_data("E-010529-2021", "TITULAR DEMO")
-
-        self.setUpdatesEnabled(True)
-        self.setVisible(True)
 
     # ——————————————————————————————————————————
     def showEvent(self, event: QShowEvent) -> None:  # noqa: D401
-        self.setUpdatesEnabled(True)
         super().showEvent(event)
+        self.setUpdatesEnabled(True)
 
     # ══════════════════════ WIDGETS ═══════════════════════════════════════════
     def _create_widgets(self) -> None:
+        # Marco del menú
         self.menu_frame = QWidget()
         self.menu_frame.setObjectName("menuFrame")
         self.menu_frame.setFixedWidth(60)
 
-        self.btn_toggle_menu = QPushButton("")
-        self.btn_open_expediente = QPushButton("")
-        self.btn_load_annex = QPushButton("")
-        self.btn_sign = QPushButton("")
+        # Botones de acciones
+        self.btn_toggle = QPushButton()
+        self.btn_open = QPushButton()
+        self.btn_load = QPushButton()
+        self.btn_download = QPushButton()
+        self.btn_print = QPushButton()
+        self.btn_sign = QPushButton()
 
-        self.menu_buttons: dict[QPushButton, str] = {
-            self.btn_toggle_menu: "Menú",
-            self.btn_open_expediente: "Abrir Expediente",
-            self.btn_load_annex: "Cargar Documento",
+        # Botón de información de versión (parte inferior)
+        self.btn_version = QPushButton()
+
+        # Asignar iconos y tooltips
+        menu_map: dict[QPushButton, str] = {
+            self.btn_toggle: "Menú",
+            self.btn_open: "Abrir Expediente",
+            self.btn_load: "Cargar Documento",
+            self.btn_download: "Descargar",
+            self.btn_print: "Imprimir",
             self.btn_sign: "Firmar Documento",
         }
-        for btn, text in self.menu_buttons.items():
-            btn.setIcon(self._get_icon(text))
+        for btn, label in menu_map.items():
+            btn.setIcon(self._get_icon(label))
             btn.setIconSize(QSize(30, 30))
-            btn.setToolTip(text)
+            btn.setToolTip(label)
 
+        self.btn_version.setIcon(self._get_icon("Versión"))
+        self.btn_version.setIconSize(QSize(40, 40))
+        self.btn_version.setToolTip("Acerca de WolfSight-PDF")
+
+        # Componentes del área central
         self.main_header = MainHeaderWidget()
-
         self.content_splitter = QSplitter(Qt.Orientation.Horizontal)
         self.main_viewer = PdfViewer()
         self.annex_viewer = PdfViewer()
 
+        # Contenedores
         main_container = self._create_viewer_container(
-            "Expediente Principal",
-            viewer=self.main_viewer,
-            path_getter=lambda: self.current_expediente_path,
+            "Expediente Principal", self.main_viewer, path_getter=lambda: self.current_expediente_path
         )
-        self.annex_container = self._create_viewer_container(
-            "Documento a Anexar",
-            viewer=self.annex_viewer,
-            is_annex=True,
-            path_getter=lambda: self.current_annex_path,
+        annex_container = self._create_viewer_container(
+            "Documento a Anexar", self.annex_viewer, is_annex=True, path_getter=lambda: self.current_annex_path
         )
-
         self.content_splitter.addWidget(main_container)
-        self.content_splitter.addWidget(self.annex_container)
+        self.content_splitter.addWidget(annex_container)
         self.content_splitter.setSizes([self.width(), 0])
 
     # ══════════════════════ LAYOUT ════════════════════════════════════════════
     def _create_layout(self) -> None:
-        main_layout = QHBoxLayout()
-        main_layout.setContentsMargins(0, 0, 0, 0)
-        main_layout.setSpacing(0)
-
-        menu_layout = QVBoxLayout(self.menu_frame)
-        menu_layout.setAlignment(Qt.AlignmentFlag.AlignTop)
-        menu_layout.setContentsMargins(5, 5, 5, 5)
-        for btn in self.menu_buttons:
-            menu_layout.addWidget(btn)
+        menu_vbox = QVBoxLayout(self.menu_frame)
+        menu_vbox.setAlignment(Qt.AlignmentFlag.AlignTop)
+        menu_vbox.setContentsMargins(5, 5, 5, 5)
+        menu_vbox.addWidget(self.btn_toggle)
+        menu_vbox.addWidget(self.btn_open)
+        menu_vbox.addWidget(self.btn_load)
+        menu_vbox.addWidget(self.btn_download)
+        menu_vbox.addWidget(self.btn_print)
+        menu_vbox.addWidget(self.btn_sign)
+        menu_vbox.addStretch()
+        menu_vbox.addWidget(self.btn_version)
 
         central_panel = QWidget()
         central_vbox = QVBoxLayout(central_panel)
@@ -236,22 +214,24 @@ class MainWindow(QMainWindow):
         central_vbox.addWidget(self.main_header)
         central_vbox.addWidget(self.content_splitter)
 
-        main_layout.addWidget(self.menu_frame)
-        main_layout.addWidget(central_panel)
+        root_hbox = QHBoxLayout()
+        root_hbox.setContentsMargins(0, 0, 0, 0)
+        root_hbox.setSpacing(0)
+        root_hbox.addWidget(self.menu_frame)
+        root_hbox.addWidget(central_panel)
 
         wrapper = QWidget()
-        wrapper.setLayout(main_layout)
+        wrapper.setLayout(root_hbox)
         self.setCentralWidget(wrapper)
 
     # ═════════════════════ SEÑALES ════════════════════════════════════════════
     def _connect_signals(self) -> None:
-        self.btn_toggle_menu.clicked.connect(self._toggle_menu)
-        self.btn_open_expediente.clicked.connect(self._open_expediente)
-        self.btn_load_annex.clicked.connect(self._load_document_to_annex)
-        if hasattr(self, "btn_confirm_annex"):
-            self.btn_confirm_annex.clicked.connect(self._confirm_and_annex)
-        if hasattr(self, "btn_close_annex"):
-            self.btn_close_annex.clicked.connect(self._close_annex_pane)
+        self.btn_toggle.clicked.connect(self._toggle_menu)
+        self.btn_open.clicked.connect(self._open_expediente)
+        self.btn_load.clicked.connect(self._load_document_to_annex)
+        self.btn_download.clicked.connect(lambda: self._download_pdf(self.current_expediente_path))
+        self.btn_print.clicked.connect(lambda: self._print_pdf(self.current_expediente_path))
+        self.btn_version.clicked.connect(lambda: VersionDialog(self).exec())
 
     # ═════════════ HELPERS DE CONSTRUCCIÓN ════════════════════════════════════
     def _create_viewer_container(
@@ -276,31 +256,13 @@ class MainWindow(QMainWindow):
         hbox.addWidget(QLabel(title))
         hbox.addStretch()
 
-        btn_download = QPushButton(self._get_icon("Descargar"), "")
-        btn_download.setIconSize(QSize(20, 20))
-        btn_download.setToolTip("Descargar PDF")
-        btn_download.clicked.connect(
-            lambda _=False, pg=path_getter: self._download_pdf(pg())
-        )
-        hbox.addWidget(btn_download)
-
-        btn_print = QPushButton(self._get_icon("Imprimir"), "")
-        btn_print.setIconSize(QSize(20, 20))
-        btn_print.setToolTip("Imprimir PDF")
-        btn_print.clicked.connect(
-            lambda _=False, pg=path_getter: self._print_pdf(pg())
-        )
-        hbox.addWidget(btn_print)
-
         if is_annex:
             self.btn_confirm_annex = QPushButton(self._get_icon("Anexar"), "")
-            self.btn_confirm_annex.setIconSize(QSize(20, 20))
             self.btn_confirm_annex.setToolTip("Anexar al Expediente")
             self.btn_confirm_annex.setEnabled(False)
             hbox.addWidget(self.btn_confirm_annex)
 
             self.btn_close_annex = QPushButton(self._get_icon("Cerrar"), "")
-            self.btn_close_annex.setIconSize(QSize(20, 20))
             self.btn_close_annex.setToolTip("Cerrar Panel de Anexo")
             hbox.addWidget(self.btn_close_annex)
 
@@ -315,37 +277,26 @@ class MainWindow(QMainWindow):
             "Abrir Expediente": "abrir-expediente.png",
             "Cargar Documento": "cargar-documento.png",
             "Firmar Documento": "firmar-documento.png",
-            "Anexar": "anexar.png",
-            "Cerrar": "cerrar.png",
             "Descargar": "descargar.png",
             "Imprimir": "imprimir.png",
+            "Anexar": "anexar.png",
+            "Cerrar": "cerrar.png",
+            "Versión": "wolf.png",
             "AppIcon": "app_icon.png",
         }
-
         filename = icon_map.get(key)
         if filename:
-            path = resource_path(os.path.join("assets", "icons", filename))
-            if os.path.exists(path):
-                return QIcon(path)
+            file_path = resource_path(os.path.join("assets", "icons", filename))
+            if os.path.exists(file_path):
+                return QIcon(file_path)
 
         if key == "AppIcon":
             return QIcon()
 
         style = cast(QStyle, self.style())
-        fallback = {
-            "Menú": style.StandardPixmap.SP_FileDialogListView,
-            "Abrir Expediente": style.StandardPixmap.SP_DirOpenIcon,
-            "Cargar Documento": style.StandardPixmap.SP_FileIcon,
-            "Firmar Documento": style.StandardPixmap.SP_DialogApplyButton,
-            "Anexar": style.StandardPixmap.SP_FileLinkIcon,
-            "Cerrar": style.StandardPixmap.SP_DialogCloseButton,
-            "Descargar": style.StandardPixmap.SP_DialogSaveButton,
-            "Imprimir": style.StandardPixmap.SP_FileDialogDetailedView,
-        }
-        print(f"[WARN] Icono “{filename}” no encontrado → usando fallback.")
-        return style.standardIcon(fallback.get(key, style.StandardPixmap.SP_DesktopIcon))
+        return style.standardIcon(QStyle.StandardPixmap.SP_MessageBoxInformation)
 
-    # —— Acciones de los botones propios ————————————————————————————————
+    # —— Acciones propias ——————————————————————————————————————————————
     def _download_pdf(self, path: str | None) -> None:
         if path:
             download_pdf(path, self)
@@ -354,76 +305,52 @@ class MainWindow(QMainWindow):
         if path:
             print_pdf(path, self)
 
-    # ═════════════════════ SLOTS EXISTENTES ══════════════════════════════════
+    # —— Slots ——————————————————————————————————————————————
     def _open_expediente(self) -> None:
-        path, _ = QFileDialog.getOpenFileName(
-            self, "Abrir Expediente PDF", "", "PDF Files (*.pdf)"
-        )
-        if not path:
-            return
-
-        self.current_expediente_path = path
-        self.main_viewer.load_pdf(path)
-        self.main_header.update_data("K-003607-2025", "CACERES GLADYS NILDA")
-
-        if self.content_splitter.sizes()[1] != 0:
-            self.content_splitter.setSizes([self.width(), 0])
+        path, _ = QFileDialog.getOpenFileName(self, "Abrir Expediente PDF", "", "PDF (*.pdf)")
+        if path:
+            self.current_expediente_path = path
+            self.main_viewer.load_pdf(path)
+            self.main_header.update_data("K-003607-2025", "CACERES GLADYS NILDA")
+            if self.content_splitter.sizes()[1] != 0:
+                self.content_splitter.setSizes([self.width(), 0])
 
     def _load_document_to_annex(self) -> None:
         if not self.current_expediente_path:
-            print("► Abra primero un expediente principal.")
+            print("► Primero abra un expediente principal.")
             return
-
-        path, _ = QFileDialog.getOpenFileName(
-            self, "Cargar Documento para Anexar", "", "PDF Files (*.pdf)"
-        )
-        if not path:
-            return
-
-        self.current_annex_path = path
-        self.annex_viewer.load_pdf(path)
-        self.content_splitter.setSizes([self.width() // 2, self.width() // 2])
-        if hasattr(self, "btn_confirm_annex"):
-            self.btn_confirm_annex.setEnabled(True)
-
-    def _confirm_and_annex(self) -> None:
-        if not (self.current_expediente_path and self.current_annex_path):
-            return
-
-        dialog = CustomConfirmDialog(self)
-        if dialog.exec():
-            output = self.current_expediente_path.replace(".pdf", "-anexado.pdf")
-            merge_pdfs(self.current_expediente_path, [self.current_annex_path], output)
-            self._close_annex_pane()
-            self.main_viewer.load_pdf(output)
-            self.current_expediente_path = output
-
-    def _close_annex_pane(self) -> None:
-        self.content_splitter.setSizes([self.width(), 0])
-        self.annex_viewer.load_pdf("")
-        self.current_annex_path = None
-        if hasattr(self, "btn_confirm_annex"):
-            self.btn_confirm_annex.setEnabled(False)
+        path, _ = QFileDialog.getOpenFileName(self, "Cargar Documento", "", "PDF (*.pdf)")
+        if path:
+            self.current_annex_path = path
+            self.annex_viewer.load_pdf(path)
+            self.content_splitter.setSizes([self.width() // 2, self.width() // 2])
+            if hasattr(self, "btn_confirm_annex"):
+                self.btn_confirm_annex.setEnabled(True)
 
     def _toggle_menu(self) -> None:
         collapsed, expanded = 60, 220
-        self.animation = QPropertyAnimation(self.menu_frame, b"minimumWidth", self)
-        self.animation.setDuration(300)
-        self.animation.setEasingCurve(QEasingCurve.Type.InOutCubic)
+        self._menu_animation = QPropertyAnimation(self.menu_frame, b"minimumWidth", self)
+        self._menu_animation.setDuration(300)
+        self._menu_animation.setEasingCurve(QEasingCurve.Type.InOutCubic)
 
         if self.menu_is_expanded:
-            self.animation.setEndValue(collapsed)
-            for btn in self.menu_buttons:
+            self._menu_animation.setEndValue(collapsed)
+            for btn in (self.btn_toggle, self.btn_open, self.btn_load, self.btn_download, self.btn_print, self.btn_sign):
                 btn.setText("")
         else:
-            self.animation.setEndValue(expanded)
-            for btn, text in self.menu_buttons.items():
-                btn.setText(f"   {text}")
+            self._menu_animation.setEndValue(expanded)
+            self.btn_toggle.setText("   Menú")
+            self.btn_open.setText("   Abrir Expediente")
+            self.btn_load.setText("   Cargar Documento")
+            self.btn_download.setText("   Descargar")
+            self.btn_print.setText("   Imprimir")
+            self.btn_sign.setText("   Firmar Documento")
 
-        self.animation.start()
+        self._menu_animation.start()
         self.menu_is_expanded = not self.menu_is_expanded
 
-# ─── Ejecución directa ──────────────────────────────────────────────────────
+
+# ─── Arranque directo ────────────────────────────────────────────────────────
 if __name__ == "__main__":
     from PyQt6.QtWidgets import QApplication
 

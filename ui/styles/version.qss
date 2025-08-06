@@ -1,0 +1,18 @@
+/* Estilo de la ventana “Acerca de…” */
+QDialog#versionDialog {
+    background-color: #1e2a38;
+    border: 1px solid #4a6572;
+}
+
+QLabel#versionLabel {
+    color: #cfd8dc;
+    font-size: 14px;
+}
+
+QPushButton {
+    background-color: #34495e;
+    color: #ffffff;
+    padding: 6px 18px;
+    border-radius: 4px;
+}
+QPushButton:hover { background-color: #4a6a85; }
